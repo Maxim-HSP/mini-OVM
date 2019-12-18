@@ -27,12 +27,12 @@ var OVM = /** @class */ (function () {
         // backup
         this.$opts = restOpts;
     }
-    // 数据劫持，将每一个state作为目标被观察
+    // 数据劫持，将每一个state对象作为目标被观察
     OVM.observe = function (state) {
         if (!state || typeof state !== 'object')
-            return undefined;
+            return;
         Object.keys(state).forEach(function (key) {
-            var sub = new Subject(); // 每个state作为一个新目标
+            var sub = new Subject(); // 每个state对象作为一个新目标
             var val = state[key]; // 实际上这里算是将val闭包，然后通过setter、getter代理和劫持
             OVM.observe(val); // 递归以处理多维对象或数组
             Object.defineProperty(state, key, {
@@ -42,7 +42,7 @@ var OVM = /** @class */ (function () {
                 // writable: false,  // 可修改，赋值(该属性与get、set不能同时设置)
                 // 添加setter、getter以数据劫持
                 get: function () {
-                    // 每当该state（目标）被访问，且有相应的watcher，则将watcher（即节点）添加到观察者集合
+                    // 每当该目标属性被访问，且缓存有相应的watcher，则将watcher添加到观察者集合
                     if (Subject.newWatcher)
                         sub.add(Subject.newWatcher);
                     return val;
@@ -50,39 +50,47 @@ var OVM = /** @class */ (function () {
                 set: function (newVal) {
                     if (val === newVal)
                         return;
+                    val = newVal; // 赋值
                     OVM.observe(newVal); // 处理赋值时，如果新值为引用类型需为他的属性添加set及get
-                    sub.notify(newVal); // 当该state（目标）被更新，通知所有观察该目标的观察者（节点）
-                    val = newVal;
+                    sub.notify(newVal); // 当该目标属性被更新，通知所有观察该目标的观察者并执行update方法
                 }
             });
         });
+        // console.log('subject', state, sub)
     };
     OVM.prototype.compile = function (rootId) {
         var _this = this;
         // 将{{}}解析并替换数据到节点
         var replace = function (node) {
+            var reg = /\{\{([^}]+)\}\}/g;
             node.childNodes.forEach(function (child) {
                 // 元素节点则递归
                 if (child.nodeType === 1) {
                     replace(child);
                 }
-                else if (/\{\{([^}]+)\}\}/g.test(child.textContent)) {
-                    // 触发getter前，先通过Subject.watcher缓存观察者（因为不能在getter传参）
-                    Subject.newWatcher = {
-                        // TODO: 如何只替换旧值，而不是直接替换整个textContent
-                        update: function (newVal) {
-                            console.log(child, child.textContent, RegExp.$1);
-                            child.textContent = newVal;
-                        }
+                else if (reg.test(child.textContent)) {
+                    // [magic code] 利用循环产生的作用域，闭包原始的textContent（即包含{{}}的模版节点）
+                    var template_1 = child.textContent;
+                    // 文本节点替换方法
+                    var update_1 = function (newVal) {
+                        // String.replace方法第一个参数如果是正则，则当第二个参数为回调函数时，可以被多次匹配（即多次调用）
+                        // 这个回调函数的参数：match指被匹配到的整个子串，key则为正则当中括号匹配的字符串（如果有多个括号，则递增回调参数）
+                        child.textContent = template_1.replace(reg, function (match, key) {
+                            // 触发getter前，先通过Subject.watcher缓存观察者（因为不能在getter传参）
+                            // [magic code] 将函数本身作为值传递到watcher，递归调用，实现template闭包
+                            if (!newVal)
+                                Subject.newWatcher = { update: update_1, key: key };
+                            // 取出值，同时触发相应state的getter以添加观察者（Subject.newWatcher），兼容state.a.b等深层属性
+                            var val = key.trim().split('.').reduce(function (prev, next) { return (prev[next]); }, _this.state);
+                            console.log(match, val, newVal);
+                            // 清除缓存
+                            Subject.newWatcher = null;
+                            // 返回值替换
+                            return val;
+                        });
                     };
-                    // state属性名
-                    var key = RegExp.$1.trim();
-                    // 取出值，同时触发相应state的getter，以添加观察者（Subject.newWatcher），兼容state.a.b等深层属性
-                    var val = key.split('.').reduce(function (item, ite) { return (item[ite]); }, _this.state);
-                    // 清除缓存
-                    Subject.newWatcher = null;
-                    // 初始化替换，注意只替换 {{}} 部分
-                    child.textContent = child.textContent.replace(new RegExp('\\{\\{\\s*' + key + '\\s*\\}\\}', 'gm'), val);
+                    // 初始化替换，没有newVal
+                    update_1();
                 }
             });
         };
