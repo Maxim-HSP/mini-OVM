@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <script src="./OVM.js"></script>
+  <title>Document</title>
+</head>
+
+<body>
+  <div id="app">
+    <p>{{ userA.name }} {{ userA.age }} </p>
+    <p>{{ methods }}</p>
+  </div>
+  <div id="test"></div>
+  <script>
+    let App = new OVM({
+      el: '#app',
+      state: {
+        userA: {
+          name: 'maxim',
+          age: 22
+        },
+        obj2: {
+          a: {
+            b: 1
+          }
+        },
+        methods: 12
+      },
+      methods: {
+        sayState() {
+          console.log(this.state.userA.name)
+        },
+        test() {
+          this.sayState()
+        }
+      }
+    })
+
+    console.log(App)
+  </script>
+</body>
+
+</html>
