@@ -1,3 +1,7 @@
+interface ArrayConstructor {
+  from(arrayLike: any, mapFn?, thisArg?): Array<any>;
+}
+
 interface IMethods {
   [name: string]: () => any
 }
@@ -68,29 +72,9 @@ class OVM implements IOpts {
         // 元素节点则递归
         if (child.nodeType === 1) {
           replace(child)
+          this.compileNode(child)
         } else if (reg.test(child.textContent)) {
-          // [magic code] 利用循环产生的作用域，闭包原始的textContent（即包含{{}}的模版节点）
-          const template = child.textContent
-          // 文本节点替换方法
-          const update = (newVal?: any) => {
-            // String.replace方法第一个参数如果是正则，则当第二个参数为回调函数时，可以被多次匹配（即多次调用）
-            // 这个回调函数的参数：match指被匹配到的整个子串，key则为正则当中括号匹配的字符串（如果有多个括号，则递增回调参数）
-            // 不过这种方法的缺陷是不能够再使用newVal去替换值，因为如果是多个{{}}在同一元素内排列，则会将所有{{}}内的值都换为newValue
-            child.textContent = template.replace(reg, (match, key) => {
-              // 触发getter前，先通过Subject.watcher缓存观察者（因为不能在getter传参）
-              // [magic code] 将函数本身作为值传递到watcher，递归调用，实现template闭包
-              if (!newVal) Subject.newWatcher = { update, key }
-              // 取出值，同时触发相应state的getter以添加观察者（Subject.newWatcher），兼容state.a.b等深层属性
-              const val = key.trim().split('.').reduce((prev, next) => (prev[next]), this.state)
-              // console.log(match, val, newVal)
-              // 清除缓存
-              Subject.newWatcher = null
-              // 返回值替换
-              return val
-            })
-          }
-          // 初始化替换，没有newVal
-          update()
+          this.compileText(child, reg)
         }
       })
     }
@@ -105,6 +89,56 @@ class OVM implements IOpts {
     replace(fregment)
     // 处理完成后再将文档碎片放入实际Dom节点中
     rootEl.appendChild(fregment)
+  }
+
+  // 文本节点编译方法
+  private compileText(node: HTMLElement, reg: RegExp) {
+    // [magic code] 利用循环产生的作用域，闭包原始的textContent（即包含{{}}的模版节点）
+    const template = node.textContent
+    const update = (newVal?: any) => {
+      // String.replace方法第一个参数如果是正则，则当第二个参数为回调函数时，可以被多次匹配（即多次调用）
+      // 这个回调函数的参数：match指被匹配到的整个子串，key则为正则当中括号匹配的字符串（如果有多个括号，则递增回调参数）
+      // 不过这种方法的缺陷是不能够再使用newVal去替换值，因为如果是多个{{}}在同一元素内排列，则会将所有{{}}内的值都换为newValue
+      node.textContent = template.replace(reg, (match, key) => {
+        // 触发getter前，先通过Subject.watcher缓存观察者（因为不能在getter传参）
+        // [magic code] 将函数本身作为值传递到watcher，递归调用，实现template闭包
+        if (!newVal) Subject.newWatcher = { update, key }
+        // 取出值，同时触发相应state的getter以添加观察者（Subject.newWatcher），兼容state.a.b等深层属性
+        const val = key.trim().split('.').reduce((prev, next) => (prev[next]), this.state)
+        // console.log(match, val, newVal)
+        // 清除缓存
+        Subject.newWatcher = null
+        // 返回值替换
+        return val
+      })
+    }
+    update() // 初始化替换（无newVal）
+  }
+
+  // 依据属性的节点编译方法
+  private compileNode(node: HTMLElement) {
+    Array.from(node.attributes).forEach(attr => {
+      const { name, value } = attr
+      if(name.includes('@')) {
+        // 事件属性
+        node.addEventListener(name.replace('@', ''), this[value].bind(this))
+      } else if (name.includes(':')) {
+        // 普通属性
+        const realAttr = name.replace(':', '')
+        // 缓存观察者
+        Subject.newWatcher = {
+          key: String(attr),
+          update: (newVal) => {
+            node[realAttr] = newVal
+          }
+        }
+        // 触发getter，添加观察者
+        const realVal = value.trim().split('.').reduce((prev, next) => (prev[next]), this.state)
+        Subject.newWatcher = null
+        // 值替换
+        node[realAttr] = realVal
+      }
+    });
   }
 }
 

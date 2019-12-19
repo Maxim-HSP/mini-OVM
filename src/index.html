@@ -11,10 +11,11 @@
 
 <body>
   <div id="app">
-    <p>{{ userA.name }} {{ userA.age }} </p>
+    <p>name: {{ userA.name }} | age: {{ userA.age }} </p>
     <p>{{ methods }}</p>
+    set name:
+    <input type="text" @input="handleChange" :value="userA.name">
   </div>
-  <div id="test"></div>
   <script>
     let App = new OVM({
       el: '#app',
@@ -35,7 +36,11 @@
           console.log(this.state.userA.name)
         },
         test() {
-          this.sayState()
+          this.state.methods = '787878'
+        },
+        handleChange(e) {
+          // console.log(this)
+          this.state.userA.name = e.target.value
         }
       }
     })
