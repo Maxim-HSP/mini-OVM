@@ -146,7 +146,7 @@ class OVM implements IOpts {
  * 观察者 -> 目标
  * 视图 -> 数据
  * node -> state
- * [TIP] 在MVVM模式下，一个数据（目标）发生改变会通知到所有观察该数据的视图(watcher)
+ * [TIP] 在简单的MVVM模式下，一个数据（目标）发生改变会通知到所有观察该数据的视图(watcher)
  */
 
 interface watcher {
